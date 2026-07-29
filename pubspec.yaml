@@ -1,0 +1,32 @@
+name: shoppadi
+description: Shop companion for Nigerian small businesses — sales, stock, debts, receipts.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  supabase_flutter: ^2.8.0
+  drift: ^2.28.0
+  drift_flutter: ^0.2.7
+  intl: ^0.20.2
+  uuid: ^4.5.1
+  url_launcher: ^6.3.1
+  share_plus: ^10.1.4
+  pdf: ^3.11.1
+  path_provider: ^2.1.5
+  print_bluetooth_thermal: ^1.1.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  drift_dev: ^2.28.0
+  build_runner: ^2.4.15
+
+flutter:
+  uses-material-design: true
