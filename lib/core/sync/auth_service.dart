@@ -56,42 +56,20 @@ class AuthService {
 
   /// The shop this user belongs to, creating it on first sign-in. Returns null
   /// when offline — the caller keeps working locally and tries again later.
+  ///
+  /// Done in one server-side call rather than three round trips. Creating the
+  /// business and the membership row separately cannot work under RLS: reading
+  /// back the new business requires membership, which does not exist until the
+  /// step after. See migration 0004.
   Future<String?> ensureBusiness({required String shopName}) async {
     final c = client;
-    final user = c?.auth.currentUser;
-    if (c == null || user == null) return null;
+    if (c == null || c.auth.currentUser == null) return null;
 
-    final existing = await c
-        .from('business_members')
-        .select('business_id')
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .limit(1)
-        .maybeSingle();
-
-    if (existing != null) return existing['business_id'] as String;
-
-    final business = await c
-        .from('businesses')
-        .insert({'name': shopName.trim().isEmpty ? 'My shop' : shopName.trim()})
-        .select('id')
-        .single();
-    final businessId = business['id'] as String;
-
-    await c.from('business_members').insert({
-      'business_id': businessId,
-      'user_id': user.id,
-      'role': 'owner',
-      'status': 'active',
-    });
-
-    await c.from('profiles').upsert({
-      'user_id': user.id,
-      'full_name': user.userMetadata?['full_name'] as String? ?? '',
-      'phone': user.phone,
-    });
-
-    return businessId;
+    final id = await c.rpc<String?>(
+      'create_business_for_me',
+      params: {'shop_name': shopName},
+    );
+    return id;
   }
 
   /// 0803…, 803…, +234803… and 00234803… all become +234803…
