@@ -107,7 +107,9 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                         } else {
                           await ref.read(authServiceProvider).verifyOtp(
                               phone: _phone.text, code: _code.text);
-                          ref.invalidate(businessIdProvider);
+                          // No manual invalidate needed: verifyOtp completing
+                          // fires a real Supabase auth event, which
+                          // businessIdProvider now reacts to directly.
                         }
                       }),
               style: FilledButton.styleFrom(
@@ -119,8 +121,11 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
               onPressed: _busy
                   ? null
                   : () => _run(() async {
+                        // This future resolves once the browser launches, not
+                        // once the user finishes signing in — that happens
+                        // later via the OAuth redirect, which fires a real
+                        // Supabase auth event businessIdProvider reacts to.
                         await ref.read(authServiceProvider).signInWithGoogle();
-                        ref.invalidate(businessIdProvider);
                       }),
               icon: const Icon(Icons.g_mobiledata, size: 24),
               label: const Text('Continue with Google'),

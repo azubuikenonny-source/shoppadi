@@ -84,9 +84,21 @@ final saleReturnsProvider = StreamProvider.family<List<Return>, String>(
 
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 
+/// Fires on every real Supabase auth event — sign in, sign out, token
+/// refresh. This is what businessIdProvider must react to, not a manual
+/// invalidate() called right after signInWithGoogle(): that future resolves
+/// the instant the browser launches, long before the user finishes logging
+/// in, so invalidating there races the real sign-in and loses every time.
+final authStateProvider = StreamProvider<void>((ref) {
+  final changes = ref.watch(authServiceProvider).changes;
+  return changes == null ? const Stream.empty() : changes.map((_) {});
+});
+
 /// The shop id on the server, once signed in. Stored locally so the app knows
 /// which business to stamp on rows without a round trip.
 final businessIdProvider = FutureProvider<String?>((ref) async {
+  ref.watch(authStateProvider); // re-resolve whenever sign-in state changes
+
   final settings = ref.watch(settingsRepoProvider);
   final stored = await settings.businessId();
   if (stored != null && stored.isNotEmpty) return stored;
@@ -101,11 +113,13 @@ final businessIdProvider = FutureProvider<String?>((ref) async {
 });
 
 final syncEngineProvider = Provider<SyncEngine>((ref) {
-  final engine = SyncEngine(
-    db: ref.watch(dbProvider),
-    businessId: ref.watch(businessIdProvider).valueOrNull,
-  );
+  final businessId = ref.watch(businessIdProvider).valueOrNull;
+  final engine = SyncEngine(db: ref.watch(dbProvider), businessId: businessId);
   ref.onDispose(engine.dispose);
+  // Only worth running the timer once there is a business to sync against —
+  // this fires again automatically the moment sign-in actually completes,
+  // because businessIdProvider re-resolving rebuilds this provider fresh.
+  if (businessId != null) engine.start();
   return engine;
 });
 
