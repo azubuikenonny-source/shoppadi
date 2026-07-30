@@ -37,10 +37,19 @@ class AuthService {
     );
   }
 
+  /// The scheme AndroidManifest.xml registers an intent-filter for, so the
+  /// browser can hand control back to the app once Google sign-in finishes.
+  /// Without this, the OAuth flow completes in the browser and just strands
+  /// the user there.
+  static const _oauthRedirect = 'ng.shoppadi.shoppadi://login-callback';
+
   Future<void> signInWithGoogle() async {
     final c = client;
     if (c == null) throw StateError('Cloud backup is not set up.');
-    await c.auth.signInWithOAuth(OAuthProvider.google);
+    await c.auth.signInWithOAuth(
+      OAuthProvider.google,
+      redirectTo: _oauthRedirect,
+    );
   }
 
   Future<void> signOut() async => client?.auth.signOut();
