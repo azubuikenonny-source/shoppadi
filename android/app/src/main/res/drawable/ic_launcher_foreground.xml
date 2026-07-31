@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A market stall awning over a naira sign — the shop and its money, which is
+  what the app is for. Drawn as a vector so it stays sharp on every screen
+  density instead of shipping five blurry PNGs.
+
+  Adaptive icons reserve the outer third for masking, so everything sits inside
+  the middle 60% of the 108dp canvas or the launcher will crop it.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Awning: three scalloped bays, the classic market stall silhouette -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,34 L78,34 L78,44 Q72,50 66,44 Q60,50 54,44 Q48,50 42,44 Q36,50 30,44 Z" />
+
+    <!-- Counter top -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,52 L76,52 L76,57 L32,57 Z" />
+
+    <!-- Naira: two uprights, diagonal, and the two crossbars that make the sign -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42,62 L47,62 L47,86 L42,86 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M61,62 L66,62 L66,86 L61,86 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M47,62 L52,62 L66,86 L61,86 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,69 L70,69 L70,73 L38,73 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M38,76 L70,76 L70,80 L38,80 Z" />
+</vector>
