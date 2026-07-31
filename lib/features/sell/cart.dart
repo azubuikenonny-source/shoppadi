@@ -46,6 +46,10 @@ class CartNotifier extends Notifier<List<CartEntry>> {
       state = state.where((e) => e.product.id != productId).toList();
 
   void clear() => state = const [];
+
+  /// Puts back a cart captured before [clear] — the undo half of the Clear
+  /// button. A stray thumb wiping a fifteen-item sale must be recoverable.
+  void restore(List<CartEntry> entries) => state = List.of(entries);
 }
 
 final cartTotalProvider = Provider<int>((ref) => ref

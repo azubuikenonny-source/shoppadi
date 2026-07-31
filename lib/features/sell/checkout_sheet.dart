@@ -36,28 +36,43 @@ class _CheckoutSheetState extends ConsumerState<CheckoutSheet> {
   String _channel = 'opay';
   String? _customerId;
   final _paidController = TextEditingController();
+  final _discountController = TextEditingController();
   bool _saving = false;
 
   bool get _needsCustomer => _method == 'credit' || _partialAmount != null;
 
-  /// Set only when the cashier typed an amount lower than the total.
+  /// Money knocked off at the counter (design doc 4.1). Clamped to the
+  /// subtotal: a shop can give something away, but a sale can never owe the
+  /// customer money.
+  int get _discount {
+    final typed = parseNairaToKobo(_discountController.text) ?? 0;
+    final subtotal = ref.read(cartTotalProvider);
+    return typed.clamp(0, subtotal);
+  }
+
+  /// What the customer actually owes after the discount — every payment
+  /// comparison below runs against this, not the shelf-price subtotal.
+  int get _dueTotal => ref.read(cartTotalProvider) - _discount;
+
+  /// Set only when the cashier typed an amount lower than what is due.
   int? get _partialAmount {
     final typed = parseNairaToKobo(_paidController.text);
     if (typed == null) return null;
-    final total = ref.read(cartTotalProvider);
-    return typed < total ? typed : null;
+    return typed < _dueTotal ? typed : null;
   }
 
   @override
   void dispose() {
     _paidController.dispose();
+    _discountController.dispose();
     super.dispose();
   }
 
   Future<void> _complete() async {
     // Everything is captured before the cart is cleared — the getters below
     // read cart state, which is empty by the time the receipt is built.
-    final total = ref.read(cartTotalProvider);
+    final discount = _discount;
+    final total = _dueTotal;
     final entries = ref.read(cartProvider);
     final paid = _method == 'credit' ? 0 : (_partialAmount ?? total);
     final balance = total - paid;
@@ -93,6 +108,7 @@ class _CheckoutSheetState extends ConsumerState<CheckoutSheet> {
             paymentMethod: _method,
             transferChannel: _method == 'transfer' ? _channel : null,
             customerId: _customerId,
+            discount: discount,
             amountPaidOverride: _method == 'credit' ? 0 : _partialAmount,
           );
 
@@ -106,6 +122,7 @@ class _CheckoutSheetState extends ConsumerState<CheckoutSheet> {
         ],
         total: total,
         amountPaid: paid,
+        discount: discount,
         customerName: customerName,
       );
 
@@ -125,6 +142,7 @@ class _CheckoutSheetState extends ConsumerState<CheckoutSheet> {
                 ],
                 total: total,
                 amountPaid: paid,
+                discount: discount,
                 customerName: customerName,
                 width: shop.paperWidth,
               ),
@@ -166,7 +184,9 @@ class _CheckoutSheetState extends ConsumerState<CheckoutSheet> {
   @override
   Widget build(BuildContext context) {
     final entries = ref.watch(cartProvider);
-    final total = ref.watch(cartTotalProvider);
+    final subtotal = ref.watch(cartTotalProvider);
+    final discount = _discount;
+    final total = subtotal - discount;
     final customers = ref.watch(customersProvider);
     final insets = MediaQuery.viewInsetsOf(context).bottom;
     final scheme = Theme.of(context).colorScheme;
@@ -193,7 +213,32 @@ class _CheckoutSheetState extends ConsumerState<CheckoutSheet> {
             ),
             const SizedBox(height: 12),
             ...entries.map((e) => _CartRow(entry: e)),
+            if (discount > 0)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Discount', style: TextStyle(color: scheme.tertiary)),
+                    Text('-${formatKoboCompact(discount)}',
+                        style: TextStyle(
+                            color: scheme.tertiary,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
             const Divider(height: 24),
+            TextField(
+              controller: _discountController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Discount',
+                prefixText: '₦',
+                helperText: 'Optional — knocked off the total',
+              ),
+            ),
+            const SizedBox(height: 12),
             Text('Payment method',
                 style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 8),

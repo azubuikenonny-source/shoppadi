@@ -29,6 +29,11 @@ class SaleDetailScreen extends ConsumerWidget {
     final sale = ref.watch(saleProvider(saleId));
     final lines = ref.watch(saleLinesProvider(saleId));
     final returns = ref.watch(saleReturnsProvider(saleId));
+    // Handing money back is a manager's call (design doc section 6). The
+    // server would reject a cashier's return anyway; better the button is
+    // honest than the sync queue jams on a refusal.
+    final canReturn =
+        ref.watch(membershipProvider).valueOrNull?.canRecordMoneyOut ?? false;
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -106,12 +111,18 @@ class SaleDetailScreen extends ConsumerWidget {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  if (l.isNotEmpty)
+                  if (l.isNotEmpty && canReturn)
                     FilledButton.tonalIcon(
                       onPressed: () =>
                           ReturnSheet.show(context, saleId: saleId, sale: s),
                       icon: const Icon(Icons.assignment_return_outlined),
                       label: const Text('Return items'),
+                    )
+                  else if (l.isNotEmpty)
+                    Text(
+                      'Returns need a manager or the owner.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: scheme.outline, fontSize: 12),
                     ),
                 ],
               ),
@@ -147,6 +158,7 @@ class SaleDetailScreen extends ConsumerWidget {
       ],
       total: sale.total,
       amountPaid: sale.amountPaid,
+      discount: sale.discount,
       at: sale.saleDate,
     );
 
@@ -192,6 +204,7 @@ Future<PrintOutcome> printSale(
           ],
           total: sale.total,
           amountPaid: sale.amountPaid,
+          discount: sale.discount,
           vatAmount: sale.vatAmount,
           at: sale.saleDate,
           customerName: customerName,

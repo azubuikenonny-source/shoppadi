@@ -253,6 +253,34 @@ class SyncEngine {
           await client.from('invoices').upsert(Payloads.invoice(row, business));
         }
 
+      case 'app_settings':
+        // rowId is the settings key, not a uuid. Only shop-level keys are ever
+        // enqueued, but re-check here so a stale row can never leak a printer
+        // MAC or a sync cursor to the server.
+        final key = entry.rowId;
+        if (!SettingsRepository.isShared(key)) return;
+        final row = await (db.select(db.appSettings)
+              ..where((s) => s.key.equals(key)))
+            .getSingleOrNull();
+        if (row == null) return;
+        await client.from('app_settings').upsert({
+          'business_id': business,
+          'key': key,
+          'value': row.value,
+        });
+        if (key == 'business_name' && row.value.trim().isNotEmpty) {
+          // Best effort: businesses.name feeds restore and the staff invite
+          // flow, but its update policy is owner-only — a manager editing the
+          // footer must not wedge their sync queue on this.
+          try {
+            await client
+                .from('businesses')
+                .update({'name': row.value.trim()}).eq('id', business);
+          } catch (_) {
+            // The app_settings copy still made it; that is the one that syncs.
+          }
+        }
+
       default:
         // Unknown table: drop it rather than retry forever.
         return;
@@ -398,6 +426,29 @@ class SyncEngine {
         final keep = rows.where((r) => !dirty.contains(r['id'])).toList();
         await db.batch((b) => b.insertAllOnConflictUpdate(
             db.invoices, keep.map(Hydrators.invoice).toList()));
+      },
+    );
+
+    total += await _pullTable(
+      client: client,
+      business: business,
+      settings: settings,
+      table: 'app_settings',
+      cursorColumn: 'updated_at',
+      apply: (rows) async {
+        for (final row in rows) {
+          final key = row['key'] as String? ?? '';
+          // Shared keys only, and never over an edit this phone has not sent
+          // yet — the same dirty rule every other table follows.
+          if (!SettingsRepository.isShared(key)) continue;
+          if (dirty.contains(key)) continue;
+          await db.into(db.appSettings).insertOnConflictUpdate(
+                AppSettingsCompanion.insert(
+                  key: key,
+                  value: row['value'] as String? ?? '',
+                ),
+              );
+        }
       },
     );
 

@@ -61,12 +61,17 @@ class CustomersScreen extends ConsumerWidget {
                               child: Text('No outstanding debts',
                                   style: TextStyle(color: scheme.outline)),
                             )
-                          : ListView.separated(
-                              itemCount: list.length,
-                              separatorBuilder: (_, __) =>
-                                  const Divider(height: 1),
-                              itemBuilder: (_, i) =>
-                                  _DebtorTile(debtor: list[i]),
+                          : RefreshIndicator(
+                              onRefresh: () async => await ref
+                                  .read(syncEngineProvider)
+                                  .syncNow(),
+                              child: ListView.separated(
+                                itemCount: list.length,
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (_, i) =>
+                                    _DebtorTile(debtor: list[i]),
+                              ),
                             ),
                     ),
                   ],

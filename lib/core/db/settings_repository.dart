@@ -1,4 +1,5 @@
 import 'database.dart';
+import 'outbox.dart';
 
 /// The shop's own details — what prints on receipts and signs WhatsApp
 /// messages. Wallet accounts are the "Transfer to:" line (design doc 7).
@@ -58,6 +59,22 @@ class SettingsRepository {
   static const _printerName = 'printer_name';
   static const _paperWidth = 'paper_width';
   static const _autoPrint = 'auto_print';
+
+  /// Which settings belong to the *shop* rather than this handset.
+  ///
+  /// Shop-level keys sync: the manager's receipts must carry the same name,
+  /// footer and account numbers the owner typed, and a restored phone must get
+  /// its receipt setup back. Everything else is deliberately local — a printer
+  /// MAC pairs with one phone, sync cursors describe one phone's progress, and
+  /// the cached role is one phone's permission. Syncing any of those would let
+  /// one device corrupt another's state.
+  static bool isShared(String key) =>
+      key == _name ||
+      key == _phone ||
+      key == _footer ||
+      key == _vatEnabled ||
+      key == _vatRate ||
+      key.startsWith(_accountPrefix);
 
   Stream<ShopProfile> watchProfile() =>
       db.select(db.appSettings).watch().map(_toProfile);
@@ -158,6 +175,16 @@ class SettingsRepository {
   Future<void> saveVat({required bool enabled, required double rate}) async {
     await _put(_vatEnabled, enabled.toString());
     await _put(_vatRate, rate.toString());
+    await _enqueueShared([_vatEnabled, _vatRate]);
+  }
+
+  /// Queues shop-level settings for the server. Kept out of [_put] on purpose:
+  /// _put also writes sync cursors, and a cursor save that enqueued itself
+  /// would make every sync schedule the next one forever.
+  Future<void> _enqueueShared(List<String> keys) async {
+    for (final key in keys.where(isShared)) {
+      await enqueue(db, 'app_settings', key);
+    }
   }
 
   Future<void> saveProfile({
@@ -173,6 +200,12 @@ class SettingsRepository {
       for (final entry in accounts.entries) {
         await _put('$_accountPrefix${entry.key}', entry.value);
       }
+      await _enqueueShared([
+        _name,
+        _phone,
+        _footer,
+        for (final key in accounts.keys) '$_accountPrefix$key',
+      ]);
     });
   }
 

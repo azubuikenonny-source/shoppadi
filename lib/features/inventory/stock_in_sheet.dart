@@ -30,6 +30,11 @@ class _StockInSheetState extends ConsumerState<StockInSheet> {
   final _reason = TextEditingController();
   bool _isCorrection = false;
 
+  /// A bounced tap must not write the purchase twice. Every ledger entry here
+  /// is permanent by design, so a double-fire is not an annoyance — it is
+  /// forty phantom cartons on the shelf.
+  bool _busy = false;
+
   @override
   void initState() {
     super.initState();
@@ -45,8 +50,10 @@ class _StockInSheetState extends ConsumerState<StockInSheet> {
   }
 
   Future<void> _submit() async {
+    if (_busy) return;
     final qty = double.tryParse(_qty.text.trim());
     if (qty == null || qty == 0) return;
+    setState(() => _busy = true);
     final repo = ref.read(productsRepoProvider);
 
     if (_isCorrection) {
@@ -119,7 +126,7 @@ class _StockInSheetState extends ConsumerState<StockInSheet> {
             ),
           const SizedBox(height: 20),
           FilledButton(
-            onPressed: _submit,
+            onPressed: _busy ? null : _submit,
             style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16)),
             child: Text(_isCorrection ? 'Save correction' : 'Add to stock'),

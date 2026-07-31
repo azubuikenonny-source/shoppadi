@@ -19,6 +19,10 @@ class MoreScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(shopProfileProvider);
     final shopName = profile.valueOrNull?.name ?? '';
+    // Default to the restricted view while the role loads, same as everywhere
+    // else: a cashier should never glimpse an owner's menu during a lookup.
+    final me = ref.watch(membershipProvider).valueOrNull;
+    final canRunShop = me?.canRecordMoneyOut ?? false;
 
     return Scaffold(
       appBar: AppBar(title: const Text('More')),
@@ -43,12 +47,18 @@ class MoreScreen extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => SalesScreen.open(context),
           ),
+          // Billing is a manager's job (design doc section 6): a cashier
+          // creating or cancelling invoices would be rejected by the server
+          // anyway, so the row says why instead of half-working.
           ListTile(
             leading: const Icon(Icons.receipt_long_outlined),
             title: const Text('Invoices'),
-            subtitle: const Text('Bill a customer, chase what is owed'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => InvoicesScreen.open(context),
+            subtitle: Text(canRunShop
+                ? 'Bill a customer, chase what is owed'
+                : 'Managers and the owner handle billing'),
+            trailing: canRunShop ? const Icon(Icons.chevron_right) : null,
+            enabled: canRunShop,
+            onTap: canRunShop ? () => InvoicesScreen.open(context) : null,
           ),
           ListTile(
             leading: const Icon(Icons.print_outlined),
@@ -182,6 +192,14 @@ class _SampleShopTileState extends ConsumerState<_SampleShopTile> {
     // server. Offering to pour example stock into that is never what anyone
     // wants, so the showroom is only on offer before the shop opens.
     final signedIn = ref.watch(authServiceProvider).isSignedIn;
+
+    // Staff never see this row at all. "Erase all data" on an employee's
+    // screen is a hand grenade with a polite label — even though the server
+    // copy would survive, the shop's phone going blank mid-trading is not a
+    // decision a cashier gets to make.
+    final isOwner =
+        ref.watch(membershipProvider).valueOrNull?.canManageStaff ?? false;
+    if (signedIn && !isOwner) return const SizedBox.shrink();
 
     if (!hasProducts && signedIn) {
       return const ListTile(

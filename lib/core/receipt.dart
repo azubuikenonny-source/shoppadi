@@ -33,6 +33,7 @@ class Receipt {
     required List<ReceiptLine> lines,
     required int total,
     required int amountPaid,
+    int discount = 0,
     DateTime? at,
     String? customerName,
   }) {
@@ -55,8 +56,13 @@ class Receipt {
       buffer.writeln('     ${formatKoboCompact(line.lineTotal)}');
     }
 
+    buffer.writeln('------------------------------');
+    // The discount goes on paper: a customer given something off wants to see
+    // it, and a shop owner reviewing receipts wants to see who gave it.
+    if (discount > 0) {
+      buffer.writeln('Discount: -${formatKoboCompact(discount)}');
+    }
     buffer
-      ..writeln('------------------------------')
       ..writeln('*TOTAL: ${formatKoboCompact(total)}*')
       ..writeln('Paid: ${formatKoboCompact(amountPaid)}');
 

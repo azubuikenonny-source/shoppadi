@@ -1,7 +1,9 @@
 name: shoppadi
 description: Shop companion for Nigerian small businesses — sales, stock, debts, receipts.
 publish_to: "none"
-version: 0.1.0+1
+# versionCode (after the +) must increase every shipped build — Android uses
+# it to order updates and Play will reject a reused one.
+version: 0.4.0+2
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

@@ -38,7 +38,23 @@ class _SellScreenState extends ConsumerState<SellScreen> {
         actions: [
           if (cart.isNotEmpty)
             TextButton(
-              onPressed: () => ref.read(cartProvider.notifier).clear(),
+              onPressed: () {
+                // Clearing is instant but not final: the sale being wiped by a
+                // stray thumb mid-rush must be one tap away from coming back.
+                final wiped = List.of(cart);
+                ref.read(cartProvider.notifier).clear();
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(SnackBar(
+                    content: Text(
+                        'Sale of ${wiped.length} item${wiped.length == 1 ? '' : 's'} cleared'),
+                    action: SnackBarAction(
+                      label: 'Undo',
+                      onPressed: () =>
+                          ref.read(cartProvider.notifier).restore(wiped),
+                    ),
+                  ));
+              },
               child: const Text('Clear'),
             ),
         ],
@@ -86,7 +102,13 @@ class _SellScreenState extends ConsumerState<SellScreen> {
                     subtitle: 'Try a shorter search.',
                   );
                 }
-                return GridView.builder(
+                // Pull down to sync now rather than waiting out the timer —
+                // on a staff phone this is how "oga just changed the price"
+                // arrives on demand.
+                return RefreshIndicator(
+                  onRefresh: () async =>
+                      await ref.read(syncEngineProvider).syncNow(),
+                  child: GridView.builder(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   gridDelegate:
                       const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -110,6 +132,7 @@ class _SellScreenState extends ConsumerState<SellScreen> {
                           .setQty(items[i].id, inCart - 1),
                     );
                   },
+                  ),
                 );
               },
             ),
@@ -122,7 +145,20 @@ class _SellScreenState extends ConsumerState<SellScreen> {
           child: FilledButton(
             onPressed: cart.isEmpty
                 ? null
-                : () => CheckoutSheet.show(context),
+                : () async {
+                    await CheckoutSheet.show(context);
+                    // An empty cart afterwards means the sale completed — the
+                    // next customer starts from a clean search, not the last
+                    // customer's leftovers.
+                    if (mounted &&
+                        ref.read(cartProvider).isEmpty &&
+                        _query.isNotEmpty) {
+                      setState(() {
+                        _query = '';
+                        _search.clear();
+                      });
+                    }
+                  },
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 16),
             ),

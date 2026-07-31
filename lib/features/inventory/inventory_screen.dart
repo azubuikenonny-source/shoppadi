@@ -43,12 +43,18 @@ class InventoryScreen extends ConsumerWidget {
               ),
             );
           }
-          return ListView.separated(
-            padding: const EdgeInsets.only(bottom: 88),
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (_, i) =>
-                _ProductTile(product: items[i], canManage: canManage),
+          // Pull to sync on demand — the shop's shelf should be one gesture
+          // from current, not thirty seconds of waiting on a timer.
+          return RefreshIndicator(
+            onRefresh: () async =>
+                await ref.read(syncEngineProvider).syncNow(),
+            child: ListView.separated(
+              padding: const EdgeInsets.only(bottom: 88),
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, i) =>
+                  _ProductTile(product: items[i], canManage: canManage),
+            ),
           );
         },
       ),

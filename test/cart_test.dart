@@ -64,4 +64,21 @@ void main() {
 
     expect(container.read(cartProvider), isEmpty);
   });
+
+  test('undo after Clear brings the exact sale back', () {
+    final milk = _product(id: 'milk', price: 150000);
+    notifier().add(milk);
+    notifier().add(milk);
+    notifier().add(_product(id: 'bread', price: 90000));
+
+    final wiped = List.of(container.read(cartProvider));
+    notifier().clear();
+    expect(container.read(cartProvider), isEmpty);
+
+    notifier().restore(wiped);
+    final cart = container.read(cartProvider);
+    expect(cart, hasLength(2));
+    expect(cart.first.qty, 2);
+    expect(total(), 390000);
+  });
 }

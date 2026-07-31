@@ -47,6 +47,7 @@ class ThermalReceipt {
     required List<ReceiptLine> items,
     required int total,
     required int amountPaid,
+    int discount = 0,
     int vatAmount = 0,
     DateTime? at,
     String? customerName,
@@ -84,6 +85,9 @@ class ThermalReceipt {
     }
 
     lines.add(rule(width, char: '='));
+    if (discount > 0) {
+      lines.add(row('Discount', '-${formatKoboPlain(discount)}', width));
+    }
     if (vatAmount > 0) {
       lines.add(row('VAT included', formatKoboPlain(vatAmount), width));
     }
@@ -119,6 +123,7 @@ class ThermalReceipt {
     required List<ReceiptLine> items,
     required int total,
     required int amountPaid,
+    int discount = 0,
     int vatAmount = 0,
     DateTime? at,
     String? customerName,
@@ -131,6 +136,7 @@ class ThermalReceipt {
       items: items,
       total: total,
       amountPaid: amountPaid,
+      discount: discount,
       vatAmount: vatAmount,
       at: at,
       customerName: customerName,
