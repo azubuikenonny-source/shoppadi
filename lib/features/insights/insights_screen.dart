@@ -19,6 +19,9 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
   @override
   Widget build(BuildContext context) {
     final dashboard = ref.watch(dashboardProvider);
+    // A cashier sees what the shop took, never what it made. Markup is the
+    // owner's business (design doc section 6).
+    final seesProfit = ref.watch(canSeeProfitProvider);
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -54,26 +57,28 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
                 value: formatKoboCompact(summary.revenue),
                 sub: '${summary.saleCount} sale${summary.saleCount == 1 ? '' : 's'}',
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: _Stat(
-                      label: 'Gross profit',
-                      value: formatKoboCompact(summary.grossProfit),
-                      sub: summary.revenue == 0 ? null : '$margin% margin',
-                      color: scheme.primary,
+              if (seesProfit) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _Stat(
+                        label: 'Gross profit',
+                        value: formatKoboCompact(summary.grossProfit),
+                        sub: summary.revenue == 0 ? null : '$margin% margin',
+                        color: scheme.primary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _Stat(
-                      label: 'Cost of goods',
-                      value: formatKoboCompact(summary.cogs),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _Stat(
+                        label: 'Cost of goods',
+                        value: formatKoboCompact(summary.cogs),
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 12),
               Row(
                 children: [

@@ -45,11 +45,35 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
     }
   }
 
+  Future<void> _startOwnShop() => _run(() async {
+        final profile = await ref.read(settingsRepoProvider).load();
+        await ref
+            .read(authServiceProvider)
+            .createMyShop(shopName: profile.name);
+        ref.invalidate(membershipProvider);
+        ref.invalidate(businessIdProvider);
+      });
+
+  Future<void> _joinWithCode() async {
+    final code = await showDialog<String>(
+      context: context,
+      builder: (_) => const _JoinCodeDialog(),
+    );
+    if (code == null || code.trim().isEmpty) return;
+
+    await _run(() async {
+      await ref.read(authServiceProvider).redeemInvite(code);
+      ref.invalidate(membershipProvider);
+      ref.invalidate(businessIdProvider);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authServiceProvider);
     final status = ref.watch(syncStatusProvider).valueOrNull;
     final pending = ref.watch(pendingSyncCountProvider).valueOrNull ?? 0;
+    final businessId = ref.watch(businessIdProvider).valueOrNull;
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -129,6 +153,30 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                       }),
               icon: const Icon(Icons.g_mobiledata, size: 24),
               label: const Text('Continue with Google'),
+            ),
+          ] else if (businessId == null) ...[
+            // Signed in but belonging nowhere. Asking rather than assuming is
+            // what lets a cashier join their employer instead of silently
+            // getting a shop of their own they can never leave.
+            Text('Is this your shop, or are you joining one?',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _busy ? null : _startOwnShop,
+              icon: const Icon(Icons.storefront_outlined),
+              label: const Text('This is my own shop'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _joinWithCode,
+              icon: const Icon(Icons.group_add_outlined),
+              label: const Text('Join with a code'),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Joining needs a six-character code from the shop owner. They '
+              'make one under More → Staff.',
+              style: TextStyle(color: scheme.outline, fontSize: 12),
             ),
           ] else ...[
             ListTile(
@@ -256,6 +304,52 @@ class _StatusCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Owns its controller, so the field cannot outlive it during the dialog's
+/// exit animation — see prompt_dialogs.dart for why that matters.
+class _JoinCodeDialog extends StatefulWidget {
+  const _JoinCodeDialog();
+
+  @override
+  State<_JoinCodeDialog> createState() => _JoinCodeDialogState();
+}
+
+class _JoinCodeDialogState extends State<_JoinCodeDialog> {
+  final _code = TextEditingController();
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.of(context).pop(_code.text.trim().toUpperCase());
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Join a shop'),
+      content: TextField(
+        controller: _code,
+        autofocus: true,
+        textCapitalization: TextCapitalization.characters,
+        maxLength: 6,
+        onSubmitted: (_) => _submit(),
+        style: const TextStyle(fontSize: 24, letterSpacing: 6),
+        decoration: const InputDecoration(
+          labelText: 'Six-character code',
+          helperText: 'From the shop owner',
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel')),
+        FilledButton(onPressed: _submit, child: const Text('Join')),
+      ],
     );
   }
 }

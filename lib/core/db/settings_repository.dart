@@ -113,6 +113,27 @@ class SettingsRepository {
   Future<void> savePullCursor(String table, String isoTimestamp) =>
       _put('$_cursorPrefix$table', isoTimestamp);
 
+  /// The role is cached because permissions have to hold with no signal. A
+  /// cashier on a market street with no data must still be a cashier, not
+  /// briefly promoted to owner because the app could not ask.
+  static const _role = 'member_role';
+  static const _seesProfit = 'member_sees_profit';
+
+  Future<void> saveMembership(String role, bool canSeeProfit) async {
+    await _put(_role, role);
+    await _put(_seesProfit, canSeeProfit.toString());
+  }
+
+  Future<(String?, bool)> cachedMembership() async {
+    final rows = await db.select(db.appSettings).get();
+    final map = {for (final r in rows) r.key: r.value};
+    final role = map[_role];
+    return (
+      role == null || role.isEmpty ? null : role,
+      map[_seesProfit] == 'true',
+    );
+  }
+
   /// Restoring onto a fresh phone should bring the shop's name with it, but
   /// never overwrite a name the owner has already typed on this device.
   Future<void> adoptShopNameIfBlank(String name) async {

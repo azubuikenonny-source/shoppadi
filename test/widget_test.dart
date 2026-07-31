@@ -5,6 +5,7 @@ import 'package:shoppadi/core/db/database.dart';
 import 'package:shoppadi/core/db/reports_repository.dart';
 import 'package:shoppadi/core/db/settings_repository.dart';
 import 'package:shoppadi/core/providers.dart';
+import 'package:shoppadi/core/sync/membership.dart';
 import 'package:shoppadi/main.dart';
 
 /// Overriding the stream providers keeps the real database out of widget
@@ -26,6 +27,10 @@ List<Override> _overrides({List<Product> products = const []}) => [
       // The More tab shows a backup status chip, which would otherwise open
       // the real database just to count the outbox.
       pendingSyncCountProvider.overrideWith((ref) => Stream.value(0)),
+      // Role lookup reads cached settings, which would open the database too.
+      // Solo is what an unshared phone reports, so the shell renders as an
+      // owner sees it.
+      membershipProvider.overrideWith((ref) async => Membership.solo),
     ];
 
 void main() {

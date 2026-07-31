@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers.dart';
 import '../invoices/invoices_screen.dart';
 import '../sales/sales_screen.dart';
+import '../../core/sync/membership.dart';
 import 'backup_screen.dart';
 import 'day_close_screen.dart';
 import 'printer_screen.dart';
+import 'staff_screen.dart';
 import 'settings_screen.dart';
 
 /// Everything that is not a daily tab (design doc section 8).
@@ -62,18 +64,37 @@ class MoreScreen extends ConsumerWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => DayCloseScreen.open(context),
           ),
-          const ListTile(
-            leading: Icon(Icons.group_outlined),
-            title: Text('Staff'),
-            subtitle: Text('Coming in Phase 2'),
-            enabled: false,
-          ),
+          const _StaffTile(),
           const Divider(height: 1),
           const _BackupTile(),
           const Divider(height: 1),
           const _SampleShopTile(),
         ],
       ),
+    );
+  }
+}
+
+/// Who works here. Staff can see the list; only the owner can change it, and
+/// the screen itself says so rather than the row vanishing mysteriously.
+class _StaffTile extends ConsumerWidget {
+  const _StaffTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final me = ref.watch(membershipProvider).valueOrNull ?? Membership.solo;
+    final signedIn = ref.watch(authServiceProvider).isSignedIn;
+
+    return ListTile(
+      leading: const Icon(Icons.group_outlined),
+      title: const Text('Staff'),
+      subtitle: Text(signedIn
+          ? (me.canManageStaff
+              ? 'Invite a cashier or manager'
+              : 'You are signed in as ${me.label.toLowerCase()}')
+          : 'Sign in to share this shop with staff'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => StaffScreen.open(context),
     );
   }
 }

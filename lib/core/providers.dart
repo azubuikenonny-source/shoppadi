@@ -7,6 +7,7 @@ import 'db/demo_data.dart';
 import 'db/invoices_repository.dart';
 import 'printing/printer_service.dart';
 import 'sync/auth_service.dart';
+import 'sync/membership.dart';
 import 'sync/sync_engine.dart';
 import 'db/products_repository.dart';
 import 'db/reports_repository.dart';
@@ -94,22 +95,71 @@ final authStateProvider = StreamProvider<void>((ref) {
   return changes == null ? const Stream.empty() : changes.map((_) {});
 });
 
-/// The shop id on the server, once signed in. Stored locally so the app knows
-/// which business to stamp on rows without a round trip.
+/// The shop id on the server, once signed in and belonging somewhere. Stored
+/// locally so the app knows which business to stamp on rows without a round
+/// trip, and so it still knows with no signal.
+///
+/// Never creates a shop on its own — see [AuthService.createMyShop].
 final businessIdProvider = FutureProvider<String?>((ref) async {
-  ref.watch(authStateProvider); // re-resolve whenever sign-in state changes
-
   final settings = ref.watch(settingsRepoProvider);
   final stored = await settings.businessId();
   if (stored != null && stored.isNotEmpty) return stored;
 
-  final auth = ref.watch(authServiceProvider);
-  if (!auth.isSignedIn) return null;
-
-  final profile = await settings.load();
-  final id = await auth.ensureBusiness(shopName: profile.displayName);
+  final membership = await ref.watch(membershipProvider.future);
+  final id = membership.businessId;
   if (id != null) await settings.saveBusinessId(id);
   return id;
+});
+
+/// What the person holding this phone is allowed to do.
+///
+/// Asks the server when it can and remembers the answer, because permissions
+/// have to hold offline. Falls back to owner only when nobody has ever signed
+/// in — an unshared phone holding its own records answers to itself.
+final membershipProvider = FutureProvider<Membership>((ref) async {
+  ref.watch(authStateProvider);
+
+  final auth = ref.watch(authServiceProvider);
+  final settings = ref.watch(settingsRepoProvider);
+
+  if (!auth.isSignedIn) {
+    final (cachedRole, _) = await settings.cachedMembership();
+    // Signed out but previously staff: stay restricted rather than silently
+    // handing a cashier the owner's view by signing out.
+    if (cachedRole != null && cachedRole != 'owner') {
+      return Membership(role: Membership.roleFrom(cachedRole));
+    }
+    return Membership.solo;
+  }
+
+  try {
+    final fresh = await auth.fetchMembership();
+    if (fresh != null) {
+      await settings.saveMembership(
+          fresh.role.name, fresh.canSeeProfitFlag);
+      return fresh;
+    }
+  } on Object {
+    // Offline or the server said no — fall through to what we last knew.
+  }
+
+  final (cachedRole, seesProfit) = await settings.cachedMembership();
+  return cachedRole == null
+      ? Membership.solo
+      : Membership(
+          role: Membership.roleFrom(cachedRole),
+          canSeeProfitFlag: seesProfit,
+        );
+});
+
+/// Convenience for widgets: never null, defaults to the safest answer while
+/// the real one is still loading.
+final canSeeProfitProvider = Provider<bool>((ref) =>
+    ref.watch(membershipProvider).valueOrNull?.canSeeProfit ?? false);
+
+final staffProvider = FutureProvider<List<StaffMember>>((ref) async {
+  ref.watch(authStateProvider);
+  return ref.watch(authServiceProvider).listStaff();
 });
 
 final syncEngineProvider = Provider<SyncEngine>((ref) {

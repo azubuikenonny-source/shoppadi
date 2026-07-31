@@ -14,6 +14,10 @@ class InventoryScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final products = ref.watch(activeProductsProvider);
+    final me = ref.watch(membershipProvider).valueOrNull;
+    // Default to the restricted view until the real answer arrives, so a
+    // cashier never glimpses cost prices during a slow lookup.
+    final canManage = me?.canManageStock ?? false;
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -43,23 +47,30 @@ class InventoryScreen extends ConsumerWidget {
             padding: const EdgeInsets.only(bottom: 88),
             itemCount: items.length,
             separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (_, i) => _ProductTile(product: items[i]),
+            itemBuilder: (_, i) =>
+                _ProductTile(product: items[i], canManage: canManage),
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => ProductFormSheet.show(context),
-        tooltip: 'Add product',
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: canManage
+          ? FloatingActionButton(
+              onPressed: () => ProductFormSheet.show(context),
+              tooltip: 'Add product',
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 }
 
 class _ProductTile extends StatelessWidget {
-  const _ProductTile({required this.product});
+  const _ProductTile({required this.product, required this.canManage});
 
   final Product product;
+
+  /// Cashiers see the shelf: what it is, what it sells for, how many are left.
+  /// Stocking in and editing prices belong to a manager.
+  final bool canManage;
 
   @override
   Widget build(BuildContext context) {
@@ -111,12 +122,16 @@ class _ProductTile extends StatelessWidget {
           ],
         ],
       ),
-      trailing: IconButton(
-        icon: const Icon(Icons.add_box_outlined),
-        tooltip: 'Stock in',
-        onPressed: () => StockInSheet.show(context, product),
-      ),
-      onTap: () => ProductFormSheet.show(context, product: product),
+      trailing: canManage
+          ? IconButton(
+              icon: const Icon(Icons.add_box_outlined),
+              tooltip: 'Stock in',
+              onPressed: () => StockInSheet.show(context, product),
+            )
+          : null,
+      onTap: canManage
+          ? () => ProductFormSheet.show(context, product: product)
+          : null,
     );
   }
 }
