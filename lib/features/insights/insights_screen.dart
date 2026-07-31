@@ -100,6 +100,26 @@ class _InsightsScreenState extends ConsumerState<InsightsScreen> {
                   ),
                 ],
               ),
+              // Buying stock is the biggest thing that happens in a shop
+              // without a sale attached, and on a shared shop it is usually
+              // someone else who did it. Shown only to those who see cost, and
+              // only when it happened, so a quiet day stays uncluttered.
+              if (seesProfit && summary.stockAdded > 0) ...[
+                const SizedBox(height: 12),
+                Card(
+                  child: ListTile(
+                    leading: Icon(Icons.inventory_2_outlined,
+                        color: scheme.tertiary),
+                    title: const Text('Stock added'),
+                    subtitle: Text('${summary.stockAdded} '
+                        'unit${summary.stockAdded == 1 ? '' : 's'} bought in'),
+                    trailing: Text(
+                      formatKoboCompact(summary.stockAddedCost),
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               Card(
                 child: ListTile(

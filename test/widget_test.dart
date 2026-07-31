@@ -31,6 +31,9 @@ List<Override> _overrides({List<Product> products = const []}) => [
       // Solo is what an unshared phone reports, so the shell renders as an
       // owner sees it.
       membershipProvider.overrideWith((ref) async => Membership.solo),
+      // The shell keeps sync alive for the session, which would otherwise open
+      // the database. Nothing here is testing sync, so it stays switched off.
+      syncBootstrapProvider.overrideWith((ref) {}),
     ];
 
 void main() {

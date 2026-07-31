@@ -173,6 +173,16 @@ final syncEngineProvider = Provider<SyncEngine>((ref) {
   return engine;
 });
 
+/// Read once by the app shell so the sync engine — and its timer — stay alive
+/// for the whole session rather than only while the backup screen is open.
+///
+/// Split out from [syncEngineProvider] so a widget test can neutralise it
+/// without needing a database: the shell should not have to open SQLite just
+/// to render five tabs.
+final syncBootstrapProvider = Provider<void>((ref) {
+  ref.watch(syncEngineProvider);
+});
+
 final syncStatusProvider = StreamProvider<SyncStatus>(
     (ref) => ref.watch(syncEngineProvider).status);
 

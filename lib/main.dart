@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'core/providers.dart';
 import 'core/theme/app_theme.dart';
 import 'features/customers/customers_screen.dart';
 import 'features/insights/insights_screen.dart';
@@ -37,14 +38,14 @@ class ShopPadiApp extends StatelessWidget {
   }
 }
 
-class HomeShell extends StatefulWidget {
+class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
   @override
-  State<HomeShell> createState() => _HomeShellState();
+  ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell> {
   int _tab = 0;
 
   static const _screens = [
@@ -57,6 +58,13 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Holds the sync engine open for as long as the app is. Riverpod builds a
+    // provider only when something reads it, and the only reader used to be
+    // the Cloud backup screen — so syncing ran while that screen was open and
+    // stopped the moment it closed. An owner never saw what their staff had
+    // done unless they happened to be sitting on the backup screen.
+    ref.watch(syncBootstrapProvider);
+
     return Scaffold(
       body: IndexedStack(index: _tab, children: _screens),
       bottomNavigationBar: NavigationBar(
