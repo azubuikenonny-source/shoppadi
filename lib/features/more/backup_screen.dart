@@ -213,6 +213,7 @@ class _StatusCard extends StatelessWidget {
       SyncPhase.idle when pending == 0 => (Icons.cloud_done_outlined, scheme.primary),
       SyncPhase.idle => (Icons.cloud_queue, scheme.tertiary),
       SyncPhase.syncing => (Icons.cloud_sync_outlined, scheme.primary),
+      SyncPhase.restoring => (Icons.cloud_download_outlined, scheme.primary),
       SyncPhase.offline => (Icons.cloud_off_outlined, scheme.tertiary),
       SyncPhase.error => (Icons.error_outline, scheme.error),
       SyncPhase.notSignedIn => (Icons.cloud_off_outlined, scheme.outline),
@@ -220,6 +221,7 @@ class _StatusCard extends StatelessWidget {
     };
 
     final synced = status?.lastSyncedAt;
+    final restored = status?.restored ?? 0;
 
     return Card(
       child: Padding(
@@ -240,6 +242,14 @@ class _StatusCard extends StatelessWidget {
                   if (synced != null)
                     Text('Last backed up ${DateFormat.Hm().format(synced)}',
                         style: TextStyle(color: scheme.outline, fontSize: 12)),
+                  // Only worth saying when something actually came down, which
+                  // in practice means a phone that just restored a shop.
+                  if (restored > 0)
+                    Text(
+                        '$restored record${restored == 1 ? '' : 's'} '
+                        'brought down from the cloud',
+                        style:
+                            TextStyle(color: scheme.primary, fontSize: 12)),
                 ],
               ),
             ),

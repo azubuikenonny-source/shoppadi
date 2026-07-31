@@ -96,6 +96,32 @@ class SettingsRepository {
 
   Future<void> saveBusinessId(String id) => _put(_businessId, id);
 
+  /// How far each table has been pulled from the server, as the server's own
+  /// timestamp. Kept as settings rather than a table of their own so that
+  /// "Erase all data" clears them too — a wiped phone must re-pull everything
+  /// rather than think it is already up to date.
+  static const _cursorPrefix = 'sync_cursor_';
+
+  Future<String?> pullCursor(String table) async {
+    final row = await (db.select(db.appSettings)
+          ..where((s) => s.key.equals('$_cursorPrefix$table')))
+        .getSingleOrNull();
+    final value = row?.value ?? '';
+    return value.isEmpty ? null : value;
+  }
+
+  Future<void> savePullCursor(String table, String isoTimestamp) =>
+      _put('$_cursorPrefix$table', isoTimestamp);
+
+  /// Restoring onto a fresh phone should bring the shop's name with it, but
+  /// never overwrite a name the owner has already typed on this device.
+  Future<void> adoptShopNameIfBlank(String name) async {
+    if (name.trim().isEmpty) return;
+    final current = await load();
+    if (current.name.trim().isNotEmpty) return;
+    await _put(_name, name.trim());
+  }
+
   Future<void> savePrinter({
     String? mac,
     String? name,

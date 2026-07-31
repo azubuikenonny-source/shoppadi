@@ -5,6 +5,8 @@ import 'package:drift/drift.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../db/database.dart';
+import '../db/settings_repository.dart';
+import 'hydrators.dart';
 import 'payloads.dart';
 
 /// How long to wait before retrying after [attempts] failures. Doubles up to a
@@ -20,25 +22,39 @@ Duration retryDelay(int attempts) {
 /// forever would block everything queued behind it.
 const maxSyncAttempts = 8;
 
-enum SyncPhase { idle, syncing, offline, error, notSignedIn, notConfigured }
+enum SyncPhase {
+  idle,
+  syncing,
+  restoring,
+  offline,
+  error,
+  notSignedIn,
+  notConfigured,
+}
 
 class SyncStatus {
   const SyncStatus({
     required this.phase,
     this.pending = 0,
     this.lastSyncedAt,
+    this.restored = 0,
     this.message,
   });
 
   final SyncPhase phase;
   final int pending;
   final DateTime? lastSyncedAt;
+
+  /// Rows brought down in the last pull — only interesting the first time,
+  /// when a fresh phone is being repopulated.
+  final int restored;
   final String? message;
 
   String get label => switch (phase) {
         SyncPhase.notConfigured => 'Cloud backup not set up',
         SyncPhase.notSignedIn => 'Sign in to back up',
         SyncPhase.syncing => 'Backing up…',
+        SyncPhase.restoring => 'Bringing your records down…',
         SyncPhase.offline => pending == 0
             ? 'No connection'
             : '$pending waiting for signal',
@@ -48,11 +64,12 @@ class SyncStatus {
       };
 }
 
-/// Drains the outbox to Supabase (design doc §5).
+/// Moves records between local SQLite and Supabase (design doc §5).
 ///
-/// Push only, for now: it is what makes a lost phone survivable. Rows are
-/// pushed newest-state-wins by reading the current local row at send time, so
-/// three edits to one product cost one request, not three.
+/// Push drains the outbox: rows go up newest-state-wins by reading the current
+/// local row at send time, so three edits to one product cost one request, not
+/// three. Pull brings the shop back down onto a phone that has never seen it,
+/// which is what makes a lost handset recoverable rather than merely archived.
 class SyncEngine {
   SyncEngine({required this.db, required this.businessId});
 
@@ -146,11 +163,20 @@ class SyncEngine {
         }
       }
 
+      // Pull after push, so anything typed on this phone is already upstream
+      // before server rows come down and the dirty-row guard has less to skip.
+      final stillPending = await pendingCount();
+      if (stillPending == 0) {
+        _emit(SyncStatus(phase: SyncPhase.restoring, pending: 0));
+      }
+      final restored = await _pull(client, businessId!);
+
       _lastSyncedAt = DateTime.now();
       return _emit(SyncStatus(
         phase: SyncPhase.idle,
         pending: await pendingCount(),
         lastSyncedAt: _lastSyncedAt,
+        restored: restored,
       ));
     } on Object catch (error) {
       return _emit(SyncStatus(
@@ -231,6 +257,207 @@ class SyncEngine {
         // Unknown table: drop it rather than retry forever.
         return;
     }
+  }
+
+  /// Brings server rows down into local SQLite — what makes a lost phone
+  /// recoverable rather than merely backed up.
+  ///
+  /// Tables are pulled parents-first so foreign keys always resolve, each from
+  /// its own high-water mark so a repeat sync costs almost nothing. Rows with
+  /// unsent local edits are skipped: the outbox is the record of what this
+  /// phone changed and has not yet shared, and overwriting those would throw
+  /// away a sale the shop just rang up.
+  Future<int> _pull(SupabaseClient client, String business) async {
+    final settings = SettingsRepository(db);
+    final dirty = {
+      for (final entry in await db.select(db.outbox).get()) entry.rowId,
+    };
+    var total = 0;
+
+    total += await _pullTable(
+      client: client,
+      business: business,
+      settings: settings,
+      table: 'products',
+      cursorColumn: 'updated_at',
+      apply: (rows) async {
+        final keep = rows.where((r) => !dirty.contains(r['id'])).toList();
+        await db.batch((b) => b.insertAllOnConflictUpdate(
+            db.products, keep.map(Hydrators.product).toList()));
+      },
+    );
+
+    total += await _pullTable(
+      client: client,
+      business: business,
+      settings: settings,
+      table: 'customers',
+      cursorColumn: 'updated_at',
+      apply: (rows) async {
+        final keep = rows.where((r) => !dirty.contains(r['id'])).toList();
+        await db.batch((b) => b.insertAllOnConflictUpdate(
+            db.customers, keep.map(Hydrators.customer).toList()));
+      },
+    );
+
+    total += await _pullTable(
+      client: client,
+      business: business,
+      settings: settings,
+      table: 'sales',
+      cursorColumn: 'updated_at',
+      apply: (rows) async {
+        final keep = rows.where((r) => !dirty.contains(r['id'])).toList();
+        if (keep.isEmpty) return;
+
+        await db.batch((b) => b.insertAllOnConflictUpdate(
+            db.sales, keep.map(Hydrators.sale).toList()));
+
+        // Lines have no timestamp of their own and a return can delete one, so
+        // each pulled sale's lines are replaced wholesale rather than merged.
+        final saleIds = [for (final r in keep) r['id'] as String];
+        final items = await client
+            .from('sale_items')
+            .select()
+            .inFilter('sale_id', saleIds);
+
+        await db.transaction(() async {
+          await (db.delete(db.saleItems)
+                ..where((i) => i.saleId.isIn(saleIds)))
+              .go();
+          await db.batch((b) => b.insertAllOnConflictUpdate(
+                db.saleItems,
+                items
+                    .cast<Map<String, dynamic>>()
+                    .map(Hydrators.saleItem)
+                    .toList(),
+              ));
+        });
+      },
+    );
+
+    total += await _pullTable(
+      client: client,
+      business: business,
+      settings: settings,
+      table: 'payments',
+      cursorColumn: 'created_at',
+      apply: (rows) async {
+        final keep = rows.where((r) => !dirty.contains(r['id'])).toList();
+        await db.batch((b) => b.insertAllOnConflictUpdate(
+            db.payments, keep.map(Hydrators.payment).toList()));
+      },
+    );
+
+    total += await _pullTable(
+      client: client,
+      business: business,
+      settings: settings,
+      table: 'stock_movements',
+      cursorColumn: 'created_at',
+      apply: (rows) async {
+        final keep = rows.where((r) => !dirty.contains(r['id'])).toList();
+        await db.batch((b) => b.insertAllOnConflictUpdate(
+            db.stockMovements, keep.map(Hydrators.stockMovement).toList()));
+      },
+    );
+
+    total += await _pullTable(
+      client: client,
+      business: business,
+      settings: settings,
+      table: 'returns',
+      cursorColumn: 'created_at',
+      apply: (rows) async {
+        final keep = rows.where((r) => !dirty.contains(r['id'])).toList();
+        await db.batch((b) => b.insertAllOnConflictUpdate(
+            db.returns, keep.map(Hydrators.returnRow).toList()));
+      },
+    );
+
+    total += await _pullTable(
+      client: client,
+      business: business,
+      settings: settings,
+      table: 'day_closes',
+      cursorColumn: 'created_at',
+      apply: (rows) async {
+        final keep = rows.where((r) => !dirty.contains(r['id'])).toList();
+        await db.batch((b) => b.insertAllOnConflictUpdate(
+            db.dayCloses, keep.map(Hydrators.dayClose).toList()));
+      },
+    );
+
+    total += await _pullTable(
+      client: client,
+      business: business,
+      settings: settings,
+      table: 'invoices',
+      cursorColumn: 'updated_at',
+      apply: (rows) async {
+        final keep = rows.where((r) => !dirty.contains(r['id'])).toList();
+        await db.batch((b) => b.insertAllOnConflictUpdate(
+            db.invoices, keep.map(Hydrators.invoice).toList()));
+      },
+    );
+
+    // A restored phone should know the shop's name, not sit on "our shop".
+    if (total > 0) {
+      final shop = await client
+          .from('businesses')
+          .select('name')
+          .eq('id', business)
+          .maybeSingle();
+      if (shop != null) {
+        await settings.adoptShopNameIfBlank(shop['name'] as String? ?? '');
+      }
+    }
+
+    return total;
+  }
+
+  static const _pageSize = 500;
+
+  /// Pages one table down from its stored high-water mark and advances it.
+  /// The cursor only moves after the rows are safely written, so an interrupted
+  /// restore resumes rather than silently skipping the batch it dropped.
+  Future<int> _pullTable({
+    required SupabaseClient client,
+    required String business,
+    required SettingsRepository settings,
+    required String table,
+    required String cursorColumn,
+    required Future<void> Function(List<Map<String, dynamic>>) apply,
+  }) async {
+    final since = await settings.pullCursor(table);
+    var offset = 0;
+    var pulled = 0;
+    String? highWater;
+
+    while (true) {
+      var query =
+          client.from(table).select().eq('business_id', business);
+      if (since != null) query = query.gt(cursorColumn, since);
+
+      final rows = await query
+          .order(cursorColumn, ascending: true)
+          .range(offset, offset + _pageSize - 1);
+
+      if (rows.isEmpty) break;
+
+      final batch = rows.cast<Map<String, dynamic>>();
+      await apply(batch);
+      pulled += batch.length;
+
+      final last = batch.last[cursorColumn];
+      if (last is String) highWater = last;
+
+      if (batch.length < _pageSize) break;
+      offset += _pageSize;
+    }
+
+    if (highWater != null) await settings.savePullCursor(table, highWater);
+    return pulled;
   }
 
   Future<void> _pushSaleGraph(
