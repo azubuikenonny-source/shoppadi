@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shoppadi/core/db/database.dart';
@@ -66,6 +67,46 @@ void main() {
     await tester.pump();
 
     expect(find.text('Charge ₦1,500  ·  1 item'), findsOneWidget);
+  });
+
+  testWidgets('a miscount can be corrected without clearing the sale',
+      (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides:
+          _overrides(products: [testProduct(name: 'Peak Milk', price: 150000)]),
+      child: const ShopPadiApp(),
+    ));
+    await tester.pump();
+
+    // Meant to ring up four, tapped five — what actually happens at a counter.
+    for (var i = 0; i < 5; i++) {
+      await tester.tap(find.text('Peak Milk'));
+      await tester.pump();
+    }
+    expect(find.text('Charge ₦7,500  ·  1 item'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.remove_circle_outline));
+    await tester.pump();
+
+    expect(find.text('Charge ₦6,000  ·  1 item'), findsOneWidget);
+  });
+
+  testWidgets('removing the last one takes the item off the sale',
+      (tester) async {
+    await tester.pumpWidget(ProviderScope(
+      overrides:
+          _overrides(products: [testProduct(name: 'Peak Milk', price: 150000)]),
+      child: const ShopPadiApp(),
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('Peak Milk'));
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.remove_circle_outline));
+    await tester.pump();
+
+    expect(find.text('Charge ₦0'), findsOneWidget);
+    expect(find.byIcon(Icons.remove_circle_outline), findsNothing);
   });
 }
 

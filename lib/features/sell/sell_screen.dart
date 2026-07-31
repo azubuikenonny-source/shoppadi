@@ -96,14 +96,20 @@ class _SellScreenState extends ConsumerState<SellScreen> {
                     mainAxisSpacing: 12,
                   ),
                   itemCount: items.length,
-                  itemBuilder: (_, i) => _ProductCard(
-                    product: items[i],
-                    inCart: cart
+                  itemBuilder: (_, i) {
+                    final inCart = cart
                         .where((e) => e.product.id == items[i].id)
-                        .fold<double>(0, (_, e) => e.qty),
-                    onTap: () =>
-                        ref.read(cartProvider.notifier).add(items[i]),
-                  ),
+                        .fold<double>(0, (_, e) => e.qty);
+                    return _ProductCard(
+                      product: items[i],
+                      inCart: inCart,
+                      onTap: () =>
+                          ref.read(cartProvider.notifier).add(items[i]),
+                      onRemoveOne: () => ref
+                          .read(cartProvider.notifier)
+                          .setQty(items[i].id, inCart - 1),
+                    );
+                  },
                 );
               },
             ),
@@ -135,11 +141,17 @@ class _ProductCard extends StatelessWidget {
     required this.product,
     required this.inCart,
     required this.onTap,
+    required this.onRemoveOne,
   });
 
   final Product product;
   final double inCart;
   final VoidCallback onTap;
+
+  /// Undo one tap. Miscounting at a busy counter is normal, and the fix has to
+  /// be where the thumb already is — not behind the checkout sheet, and
+  /// certainly not "clear the whole sale and start again".
+  final VoidCallback onRemoveOne;
 
   @override
   Widget build(BuildContext context) {
@@ -168,18 +180,39 @@ class _ProductCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(formatKoboCompact(product.sellingPrice)),
+                  Flexible(
+                    child: Text(formatKoboCompact(product.sellingPrice),
+                        overflow: TextOverflow.ellipsis),
+                  ),
                   if (inCart > 0)
-                    CircleAvatar(
-                      radius: 11,
-                      backgroundColor: scheme.primary,
-                      child: Text(
-                        inCart.toStringAsFixed(0),
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: scheme.onPrimary,
-                            fontWeight: FontWeight.bold),
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Sits inside the card's own tap target, so it needs a
+                        // generous touch area of its own or a thumb aiming to
+                        // subtract will add instead.
+                        InkWell(
+                          onTap: onRemoveOne,
+                          customBorder: const CircleBorder(),
+                          child: Padding(
+                            padding: const EdgeInsets.all(4),
+                            child: Icon(Icons.remove_circle_outline,
+                                size: 20, color: scheme.primary),
+                          ),
+                        ),
+                        const SizedBox(width: 2),
+                        CircleAvatar(
+                          radius: 11,
+                          backgroundColor: scheme.primary,
+                          child: Text(
+                            inCart.toStringAsFixed(0),
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: scheme.onPrimary,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
                     )
                   else if (outOfStock)
                     Text('Out',

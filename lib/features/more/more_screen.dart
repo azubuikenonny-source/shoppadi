@@ -157,6 +157,19 @@ class _SampleShopTileState extends ConsumerState<_SampleShopTile> {
   Widget build(BuildContext context) {
     final hasProducts =
         (ref.watch(activeProductsProvider).valueOrNull ?? const []).isNotEmpty;
+    // Once a shop is signed in, its records are real and shared with the
+    // server. Offering to pour example stock into that is never what anyone
+    // wants, so the showroom is only on offer before the shop opens.
+    final signedIn = ref.watch(authServiceProvider).isSignedIn;
+
+    if (!hasProducts && signedIn) {
+      return const ListTile(
+        leading: Icon(Icons.science_outlined),
+        title: Text('Try a sample shop'),
+        subtitle: Text('Not while signed in — sample stock is not yours'),
+        enabled: false,
+      );
+    }
 
     return ListTile(
       leading: _busy

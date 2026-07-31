@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:drift/drift.dart';
+
 import 'customers_repository.dart';
 import 'database.dart';
 import 'products_repository.dart';
@@ -46,6 +48,12 @@ class DemoData {
     final customers = CustomersRepository(db);
     final sales = SalesRepository(db);
     final settings = SettingsRepository(db);
+
+    // The repositories enqueue everything they write, which is right for real
+    // records and wrong for these. Sample data is a showroom, not a shop: it
+    // must never climb into someone's real books. Noting where the queue
+    // stands lets us drop exactly what the seeding adds and nothing else.
+    final queueMark = await _outboxHighWater();
 
     await settings.saveProfile(
       name: 'Sample Provisions',
@@ -132,6 +140,18 @@ class DemoData {
         }
       }
     }
+
+    // Drop only what the seeding queued. Anything already waiting before this
+    // ran belongs to a real shop and still needs to go up.
+    await (db.delete(db.outbox)..where((o) => o.seq.isBiggerThanValue(queueMark)))
+        .go();
+  }
+
+  Future<int> _outboxHighWater() async {
+    final row = await db
+        .customSelect('SELECT COALESCE(MAX(seq), 0) AS m FROM outbox')
+        .getSingle();
+    return row.data['m'] as int;
   }
 
   /// Wipes everything. Used before a real shop starts trading.
